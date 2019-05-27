@@ -1,0 +1,126 @@
+---
+title: "Adopción de IPv6 en Países de la Región"
+output_file: reporte-CC.pdf
+params:
+  CC: MX
+  CName: Mexico
+  RDate: 20170816
+  output: html_document
+pdf_document:
+   latex_engine: xelatex
+---
+
+\setmainfont{Arial}
+\fontsize{13pt}{13pt}\selectfont
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(sqldf)
+
+#options(download.file.method = "wget")
+urlData <- paste("http://stats.labs.lacnic.net/~carlos/export/ipv6uptake/",params$CC,"-",params$RDate,".csv", sep='')
+ipv6data <- read.csv(urlData, header=TRUE, sep="\t")
+asndata <- read.csv("http://stats.labs.lacnic.net/~carlos/export/aux/asn_names.csv", header=TRUE, sep="\t")
+
+```
+
+## Resumen ejecutivo: Adopción de IPv6 en `r params$CName`
+
+El presente documento muestra el nivel de adopción de IPv6 por parte de proveedores de Internet de `r params$CName` estimado a través de comportamientos observables externamente.
+
+En el resto del documento comentaremos primeramente sobre la metodología utilizada para realizar esta medición, luego presentaremos las mediciones que se obtienen para el caso de los operadores colombianos y finalmente identificaremos algunos casos de sistemas autónomos que muestran indicios de estar prestando servicio IPv6 a usuarios finales.
+
+Los datos presentados corresponden al **`r params$RDate`**.
+
+## Breve descripción de la metodología de medición
+
+Los operadores de red o prestadores de servicios se identifican mediante sus números de sistema autónomo (ASN). Los números de ASN constituyen un identificador único de un operador en Internet.
+
+Los datos presentados aquí son relevados por un sistema de mediciones elaborado por investigadores de APNIC (El RIR de la región de Asia-Pacífico). El mecanismo de la medición consiste en presentar a los usuarios contenido web con algunos elementos alcanzables únicamente por IPv6, otros alcanzables por ambos protocolos y otros solo por IPv4. De esta manera es posible clasificar la capacidad de utilizar IPv6 por parte de un usuario en dos grandes conjuntos:
+
+-	“IPv6 Capable”: el usuario tiene la posibilidad de utilizar IPv6 para alcanzar ciertos contenidos
+-	“IPv6 Preferred”: el usuario no solo tiene la posibilidad de utilizar IPv6 sino que en caso de poder usar tanto IPv4 como IPv6, **prefiere IPv6**
+
+Idealmente todos los usuarios deberían caer en este último conjunto. Sin embargo, por diferentes motivos existen casos donde los usuarios pueden utilizar IPv6 pero no lo prefieren.
+
+Conviene destacar que esta preferencia no es controlada por el usuario sino que es el resultado de las características de la red y del software de cada usuario.
+
+APNIC utiliza Google AdWords como el vehículo por el cual se logra la presentación de estos contenidos web a los usuarios en grandes cantidades y distribuidos geográficamente de una manera relativamente uniforme.
+
+Esta metodología de medición si bien resulta extremadamente útil también tiene ciertas limitaciones, entre ellas, a saber:
+
+-	Tiende a sub-estimar la penetración de IPv6 a nivel de operadores móviles, debido a la forma que los navegadores de smartphones presentan los AdWords al usuario
+-	Puede sub-estimar la penetración IPv6 en redes donde por alguna razón los AdWords son filtrados o alterados de alguna forma por el operador mismo
+-	Hay un cierto sesgo que se introduce debido a la forma en la que se distribuyen a lo largo del día las impresiones de los AdWords
+
+
+```{r echo=FALSE, include=FALSE}
+tail(sqldf("select TIMESTAMP,ASN,percentagev6capable,samples from ipv6data"))
+```
+
+## Mediciones en `r params$CName`: Adopción de IPv6
+
+```{r ipv6data, echo = FALSE, include=FALSE}
+
+top10 <- sqldf("select ipv6data.ASN, substr(ORG_NAME,1,35) as ORG_NAME, AVG(percentagev6capable) as IPv6Cap, AVG(percentagev6preference) as IPv6Pref, max(SAMPLES) as SAMPLES from ipv6data,asndata where asndata.asn=ipv6data.asn and date(timestamp)>date('now','-90 days') group by ipv6data.ASN order by sum(SAMPLES) DESC  LIMIT 10")
+```
+
+- Tabla I: "Top 10" de operadores de `r params$CName` ordenados de acuerdo a la actividad detectada (cantidad de muestras)
+
+**Observación**: La cantidad de muestras es proporcional al tamaño y cantidad de usuarios de cada operador. Cuantas más muestras se observan, mayor es la cantidad de usuarios que tiene el operador.
+
+\fontsize{10pt}{10pt}\selectfont
+
+```{r}
+options(digits = 2)
+top10
+```
+\fontsize{13pt}{13pt}\selectfont
+
+En esta tabla tenemos, además del número de ASN y el nombre del operador, tres columnas que indican los porcentajes de usuarios en _“IPv6 Capable”_ y en _“IPv6 Preferred”_, y una columna de “Cantidad de Muestras” que indica la cantidad de veces que los AdWords de medición se han presentado a direcciones IP del operador.
+
+La columna de cantidad de muestras de alguna manera indica el tamaño del operador en cantidad de usuarios. Cuanto mayor es este valor quiere decir que mayor es la base de usuarios a la que Google le presenta sus AdWords.
+
+## Actividad IPv6 en los Top10
+
+A continuación se muestra la actividad IPv6 para los operadores Top 10 de `r params$CName`. En cada caso se grafican los datos del último año y se muestran los promedios para el último año y los últimos 30 días.
+
+\newpage
+
+```{r plot2, results="asis", fig.align='left'}
+
+for (i in top10$ASN) {
+  cat('\n')
+  cat(paste('## Actividad para el ASN' ,i))
+  cat('\n')
+  cat(paste('- Nombre organización: **', trimws(top10[top10[,"ASN"]==i,"ORG_NAME"], 'b'), '**', sep='') )
+  v6cap = sqldf(paste("select timestamp,percentagev6capable from ipv6data where asn=",i))
+  # avg30 = mean(tail(v6cap$percentagev6capable, 30))
+  st30 = sqldf(paste("select avg(percentagev6capable) as avg30, max(percentagev6capable) as max30 from ipv6data where date(timestamp)>date('now','-30 days') and asn=",i))
+  # max30 = max(tail(v6cap$percentagev6capable, 30))
+  # avg360 = mean(tail(v6cap$percentagev6capable, 360))
+  # avg360 = mean(sqldf(paste("select avg(percentagev6capable) as A from ipv6data where date(timestamp)>date('now','-360 days') and asn=",i)))  
+  st360 = sqldf(paste("select avg(percentagev6capable) as avg, max(percentagev6capable) as max from ipv6data where date(timestamp)>date('now','-360 days') and asn=",i))
+
+  # max360 = max(tail(v6cap$percentagev6capable, 360))
+
+  cat('\n')
+  cat(paste('- Promedio de actividad IPv6 ultimos 30 dias:',st30$avg,'%'))
+  cat('\n')
+  cat(paste('- Máximo de actividad IPv6 ultimos 30 dias:',st30$max,'%'))
+  cat('\n')
+  cat(paste('- Promedio de actividad IPv6 ultimos 360 dias:',st360$avg,'%'))
+  cat('\n')
+  cat(paste('- Máximo de actividad IPv6 ultimos 360 dias:',st360$max,'%'))
+  cat('\n')
+
+  # plot(tail(v6cap$percentagev6capable,360),  col='blue', type="l", ylab="v6cap")
+  plot(sqldf("select date(timestamp) as t, percentagev6capable as v from v6cap where date(timestamp)>date('now','-360 days')")$v,  col='blue', type="l", ylab="v6cap")
+  cat('\n')
+  cat('\n')
+  cat('\n')
+  cat("\n\n\\pagebreak\n")
+  cat('\n')
+}
+
+```
